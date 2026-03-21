@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <base href="./" />
+    <link rel="icon" type="image/svg+xml" href="https://base44.com/logo_v2.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="manifest" href="/manifest.json" />
+    <title>Base44 APP</title>
+    <script>
+      try {
+        var t = localStorage.getItem('routenet_pref_theme');
+        var theme = (t === 'dark' || t === 'light') ? t : 'light';
+        var bg = theme === 'dark' ? '#001a0a' : '#F0F7E8';
+        document.documentElement.classList.add(theme);
+        document.documentElement.style.background = bg;
+        document.body && (document.body.style.background = bg);
+      } catch(e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

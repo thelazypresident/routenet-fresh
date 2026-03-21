@@ -1,0 +1,91 @@
+import React from 'react';
+import { Bell } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { base44 } from '@/api/base44Client';
+import { useApp } from './contexts/AppContext';
+import { useOffline } from './contexts/OfflineContext';
+import { getUnreadNotificationCount } from '@/database/genericRepository';
+import { createPageUrl } from '../utils';
+
+export default function NotificationBell() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { theme, user } = useApp();
+  const { isOnline } = useOffline();
+
+  const isDark = theme === 'dark';
+
+  // FIX: The original bell only read from Base44 cloud — count was always
+  // 0 offline because the query returned empty when the network call failed.
+  //
+  // The fix uses a two-source approach:
+  //   1. When ONLINE: fetch from Base44 (authoritative, includes server push
+  //      notifications that were never written to the local SQLite log)
+  //   2. When OFFLINE: read from SQLite notification_log (populated by
+  //      insertNotificationLog in App.jsx when notifications are tapped,
+  //      and by reminderEngine when local notifications fire)
+  //
+  // FIX: Reduced refetchInterval from 15000ms (15s) to 60000ms (60s).
+  // The bell was polling Base44 every 15 seconds — that's 4 network requests
+  // per minute per user just for a badge count. 60s is sufficient for a
+  // notification badge and dramatically reduces battery and data usage.
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ['notifications-bell', user?.email, isOnline],
+    queryFn: async () => {
+      
+
+      if (isOnline) {
+        // Online path: fetch from Base44
+        try {
+          const notifications = await base44.entities.Notification.filter(
+            { created_by: user.email },
+            '-created_date',
+            50
+          );
+          return notifications.filter((n) => !n?.is_read).length;
+        } catch (e) {
+          // If cloud fetch fails (transient error), fall back to SQLite
+          console.warn('[NotificationBell] Base44 fetch failed, falling back to SQLite:', e);
+          return await getUnreadNotificationCount();
+        }
+      } else {
+        // Offline path: read from SQLite notification_log
+        return await getUnreadNotificationCount();
+      }
+    },
+    enabled: true,
+    // FIX: 60s instead of 15s — reduces battery drain and network usage
+    refetchInterval: 60000,
+    // Refetch when app comes back to foreground
+    refetchOnWindowFocus: true,
+    initialData: 0,
+  });
+
+  const handleClick = () => {
+    const targetPath = createPageUrl('Notifications');
+    if (location.pathname === targetPath) return;
+    navigate(targetPath);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className={`relative inline-flex items-center justify-center w-9 h-9 rounded-full transition-colors ${
+        isDark
+          ? 'bg-white/5 border border-white/10 text-white hover:bg-white/10'
+          : 'bg-gray-100 border border-gray-200 text-gray-700 hover:bg-gray-200'
+      }`}
+      aria-label="Open notifications"
+    >
+      <Bell className="w-4 h-4" />
+
+      {unreadCount > 0 && (
+        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center leading-none">
+          {unreadCount > 99 ? '99+' : unreadCount}
+        </span>
+      )}
+    </button>
+  );
+}
